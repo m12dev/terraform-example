@@ -17,6 +17,12 @@ resource "random_string" "disk_id" {
   upper   = false
 }
 
+resource "random_string" "passwd" {
+  length  = 16
+  special = false
+  upper   = true
+}
+
 # Create a resource group
 resource "azurerm_resource_group" "example" {
   name     = "example"
@@ -119,52 +125,38 @@ resource "azurerm_network_interface" "example" {
 }
 
 # Create a Virtual Machine
-resource "azurerm_virtual_machine" "example" {
-  name                = "ex-${random_string.code.result}"
-  resource_group_name = azurerm_resource_group.example.name
-  location            = azurerm_resource_group.example.location
-  vm_size             = "Standard_B1ls"
+resource "azurerm_linux_virtual_machine" "example" {
+  name                            = "ex-${random_string.code.result}"
+  resource_group_name             = azurerm_resource_group.example.name
+  location                        = azurerm_resource_group.example.location
+  size                            = "Standard_B1ls"
+  admin_username                  = "ubuntu"
+  admin_password                  = random_string.passwd.result
+  disable_password_authentication = false
   network_interface_ids = [
     azurerm_network_interface.example.id,
   ]
 
-  storage_os_disk {
-    name              = "osdisk_${random_string.disk_id.result}"
-    caching           = "ReadWrite"
-    create_option     = "FromImage"
-    managed_disk_type = "StandardSSD_LRS"
+  /*
+  admin_ssh_key {
+    username   = "ubuntu"
+    public_key = file("~/.ssh/id_rsa.pub")
+  }
+  */
+
+  os_disk {
+    caching              = "ReadWrite"
+    storage_account_type = "Standard_LRS"
   }
 
-  storage_image_reference {
+  source_image_reference {
     publisher = "Canonical"
     offer     = "0001-com-ubuntu-server-focal"
     sku       = "20_04-lts"
     version   = "20.04.202201040"
   }
 
-  os_profile {
-    admin_username = "ubuntu"
-    admin_password = "serverExamplePassword123"
-    computer_name  = "ex-${random_string.code.result}"
-    custom_data    = <<-EOF
-      #!/bin/bash
-      apt-get update
-      apt-get -y dist-upgrade
-      curl -fsSL https://get.docker.com/ | bash
-      usermod -aG docker ubuntu
-      docker run --rm -d -p 80:80 nginx:alpine
-      EOF
-  }
-
-  os_profile_linux_config {
-    disable_password_authentication = false
-    /*
-    ssh_keys {
-      key_data = file("~/.ssh/id_rsa.pub")
-      path     = "/home/ubuntu/.ssh/authorized_keys"
-    }
-    */
-  }
+  custom_data = filebase64("./custom_data.sh")
 
   tags = {
     make = "terraform"
